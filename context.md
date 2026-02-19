@@ -909,47 +909,44 @@ Exports available for reuse by other exercises:
 - `build_e2e_pipeline()` — full single-file inspector
 - `build_batch_pipeline()` — full batch inspector with fan-out
 
-### Ex 2 — Thumbnail Renderer — NOT STARTED
+### Ex 2 — Thumbnail Renderer — FUNCTIONAL
 
-Create `src/ex_2__thumbnail_renderer/render_task.py`
+See `src/ex_2__thumbnail_renderer/Plan_of_Record.md` for full implementation details.
 
-**Pipeline structure (recommended):**
-```
-GrepModelsStep (reuse from Ex 1)
-└── per_model (depth-first, because bpy scene is global)
-    ├── scene_prep (reuse from Ex 1)
-    ├── camera_setup
-    │   ├── CreateCameraStep      → camera.create_camera() + camera.frame_objects()
-    │   └── ConfigureRendererStep → render.configure_cycles() + render.enable_gpu()
-    ├── render_modalities (sequential — bpy is single-threaded)
-    │   ├── RenderTexturedStep    → render.render_frame()
-    │   ├── RenderNormalStep      → render.setup_normal_pass() + render.render_frame()
-    │   ├── RenderDepthStep       → render.setup_depth_pass() + render.render_frame()
-    │   └── RenderEdgeStep        → render.setup_edge_output() + render.render_frame()
-    ├── metadata_write
-    │   └── WriteMetadataStep     → camera.get_camera_intrinsics() + write_json_atomic()
-    └── cleanup (reuse from Ex 1)
-```
+Renders 4 modalities (textured, normal, depth, edge) at 512x512 plus metadata.json per model. Uses material override shaders for each modality (4 sequential Cycles renders). Batch mode via `GrepModelsStep` fan-out.
 
-**Key implementation notes:**
-- Reuse `scene_prep` and `cleanup` from Ex 1 (`from ex_1__mini_inspector.mini_inspector import scene_prep, cleanup`)
-- Reuse `GrepModelsStep` for batch directory scanning
-- Use `OutputNamer` from `lib.naming` for per-model subdirectory output (`{stem}/textured.png`, `{stem}/depth.png`, etc.)
-- Use `ensure_directory()` before writing any output file
-- Render modalities should be **sequential, not parallel** — bpy is single-threaded and shares global scene state
-- Wrap the per-model pipeline in a nested `Pipeline` for depth-first fan-out execution (see Ex 1 lesson learned)
-- Output: 512x512 PNGs + `metadata.json` per model
-- Shared bpy calls: `scene.reset_scene()`, `io.import_model()`, `mesh.compute_world_bbox()`, `camera.create_camera()`, `camera.frame_objects()`, `render.configure_cycles()`, `render.enable_gpu()`, `render.setup_depth_pass()`, `render.setup_normal_pass()`, `render.setup_edge_output()`, `render.render_frame()`, `camera.get_camera_intrinsics()`
-- Defer all `from lib.bpy.*` imports inside step `run()` methods
+All steps imported from `lib/pipeline_steps/` — exercise script is pure composition + CLI (~170 lines).
 
 ### Ex 3 — Procedural Camera — NOT STARTED
 
-Create `src/ex_3__proc_camera/proc_camera.py`
+Create `src/ex_3__proc_camera/proc_camera.py`. See `src/ex_3__proc_camera/Plan_of_Record.md` for detailed guidance.
 
-- Reuse `scene_prep` from Ex 1
-- Add `camera_animation` (Mode A: spline via `animation.create_bezier_path()` + `animation.constrain_to_path()`, Mode B: point-to-point via `animation.create_linear_keyframes()`)
-- Add `render_video` via `render.configure_cycles()` + `render.configure_video_output()` + `render.render_animation()`
+**Pipeline structure (recommended):**
+```
+proc_camera_e2e
+├── scene_prep (reuse PrepareSceneStep + ImportModelStep)
+├── camera_animation
+│   ├── GenerateCameraPathStep   → NEW: random control points within scene AABB
+│   └── SetupAnimationStep       → NEW: Mode A (bezier + follow path) or Mode B (linear + look-at)
+├── render_video
+│   ├── ConfigureRendererStep    → reuse, resolution=(640, 480)
+│   ├── ConfigureVideoOutputStep → NEW: render.configure_video_output() for MP4
+│   └── RenderAnimationStep      → NEW: render.render_animation()
+├── write_log
+│   └── WriteCameraLogStep       → NEW: mode + control points to JSON
+└── cleanup (reuse CleanupSceneStep)
+```
+
+**Key implementation notes:**
+- Reuse `PrepareSceneStep`, `ImportModelStep`, `CleanupSceneStep`, `ConfigureRendererStep`, `SetupEnvironmentLightStep` from `lib/pipeline_steps/`
+- New steps should extend `BlenderStep` and implement `execute()` (not `PipelineStep.run()`)
+- Use `get_scene_bounds()` from `lib/bpy/scene.py` to generate random points within the scene AABB
+- Mode A uses: `animation.create_bezier_path()` + `animation.constrain_to_path()`
+- Mode B uses: `animation.create_linear_keyframes()` + `camera.add_track_to_location()`
+- Set `scene.frame_start = 1`, `scene.frame_end = 150` before `render_animation()`
 - Output: 640x480 MP4, 150 frames, 30 fps
+- Consider adding new reusable steps to `lib/pipeline_steps/` if Ex 5 can use them (orbit animation is similar)
+- Defer all `from lib.bpy.*` imports inside `execute()` methods
 
 ### Ex 4 — Batch Validator — NOT STARTED
 
@@ -974,16 +971,24 @@ Create `src/ex_5__hpc_pipeline/process_batch.py` + `submit_jobs.sh`
 
 ## 11. Critical Lessons for Implementing New Exercises
 
-These are hard-won lessons from Ex 1 that apply to all subsequent exercises:
+These are hard-won lessons from Ex 1 and Ex 2 that apply to all subsequent exercises:
 
-1. **Depth-first execution for bpy steps.** When using `GeneratorStep` fan-out with bpy-dependent steps, wrap the entire per-model pipeline as a single `Pipeline` step. Do NOT place individual bpy steps at the same level as the `GeneratorStep` — this causes breadth-first execution which corrupts the shared bpy scene between models.
+1. **Extend `BlenderStep`, not `PipelineStep`, for bpy steps.** All steps that interact with `bpy` must extend `BlenderStep` and implement `execute()` (not `run()`). This gives automatic `.blend` scene snapshot saving after each step for debugging. Pure Python steps (file I/O, scanning) extend `PipelineStep` and implement `run()` as before.
 
-2. **Deferred bpy imports.** Place `from lib.bpy.* import ...` inside `run()` methods, not at module top level. This keeps the module importable for composition and testing without bpy.
+2. **Depth-first execution for bpy batch processing.** When using `GeneratorStep` fan-out with bpy-dependent steps, wrap the entire per-model pipeline as a single `Pipeline` step. Do NOT place individual bpy steps at the same level as the `GeneratorStep` — this causes breadth-first execution which corrupts the shared bpy scene between models.
 
-3. **Every `provides` key must be set.** If your step declares `provides=["key"]`, you MUST set `context["key"]` in `run()`. The validation middleware will fail the step otherwise.
+3. **Deferred bpy imports.** Place `from lib.bpy.* import ...` inside `execute()` methods, not at module top level. This keeps the module importable for pipeline composition and unit testing without bpy.
 
-4. **Use `OutputNamer` for batch output.** Per-model subdirectories (`{output_dir}/{stem}/output.ext`) prevent collisions and support multiple output files per model.
+4. **Every `provides` key must be set.** If your step declares `provides=["key"]`, you MUST set `context["key"]` in `execute()`. The validation middleware will fail the step otherwise.
 
-5. **Use `ensure_directory()` before writing files.** Output directories may not exist. Call `ensure_directory(output_path)` before `write_json_atomic()` or any file write.
+5. **Use `OutputNamer` for batch output.** Per-model subdirectories (`{output_dir}/{stem}/output.ext`) prevent collisions and support multiple output files per model.
 
-6. **Package imports, not sys.path.** After `pip install -e .`, use `from lib.pipeline import ...` directly. No `sys.path` hacks.
+6. **Use `ensure_directory()` before writing files.** Output directories may not exist. Call `ensure_directory(output_path)` before `write_json_atomic()` or any file write.
+
+7. **Package imports, not sys.path.** After `pip install -e .`, use `from lib.pipeline import ...` directly. No `sys.path` hacks.
+
+8. **Blender 5.0 API changes.** The `bpy` module in Blender 5.0 has breaking changes: `scene.node_tree` became `scene.compositing_node_group`, `CompositorNodeComposite` was removed, `CompositorNodeOutputFile.base_path` became `directory`, and `Material.use_nodes` is deprecated. See `lib/bpy/render.py` for compatibility helpers (`_ensure_compositor_tree`, `_get_compositor_tree`).
+
+9. **Scene snapshots to `.pipeline/` directory.** `BlenderStep` automatically saves `.blend` files to `{output_path}/.pipeline/after_{step_name}.blend`. Disable for production with `context["save_scenes"] = False`. Customize location with `context["artifacts_dir"] = "/custom/path/"`.
+
+10. **Reuse steps from `lib/pipeline_steps/`, don't redefine them.** 13 pre-built steps are available. Exercise scripts should only define exercise-specific steps (e.g., custom report formats). Import shared steps from the library.
