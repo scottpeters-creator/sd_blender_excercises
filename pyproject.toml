@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blender-excercises"
+version = "1.0.0"
+requires-python = ">=3.11"
+description = "Composable pipeline framework for 3D data engineering exercises"
+
+[tool.setuptools.packages.find]
+where = ["src"]
