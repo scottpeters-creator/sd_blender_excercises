@@ -864,8 +864,9 @@ python -m ex_2__thumbnail_renderer.render_task \
   /path/to/model.glb /path/to/renders/ --samples 64
 ```
 
-### Input data location
-300 objaverse .glb files at `/Users/scott.peters/dev/source/scott_data/objaverse/` (~2.7 GB).
+### Input data locations
+- **Objaverse** (Ex 1, 2, 4): 300 .glb files at `/Users/scott.peters/dev/source/scott_data/objaverse/` (~2.7 GB)
+- **Evermotion** (Ex 3): Indoor .blend scenes at `/Users/scott.peters/dev/source/scott_data/evermotion/AI33_001`
 
 ### Opening a model in Blender GUI (for visual verification)
 ```bash

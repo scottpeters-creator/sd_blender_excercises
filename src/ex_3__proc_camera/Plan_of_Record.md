@@ -130,4 +130,5 @@ python -m ex_3__proc_camera.proc_camera scene.blend /path/to/output/ --mode spli
 
 ## Input Data
 
-Evermotion indoor scenes at `s3://mod3d-west/evermotion/`. For local development, any .blend file with interior geometry works.
+- **Local:** `/Users/scott.peters/dev/source/scott_data/evermotion/AI33_001`
+- **S3:** `s3://mod3d-west/evermotion/`
