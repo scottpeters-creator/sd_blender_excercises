@@ -4,7 +4,7 @@
 
 Purpose: implement a resilient CLI tool that recursively lists `.glb` objects from an S3 prefix, downloads and analyzes them using standalone `bpy`, and uploads per-file JSON reports back to S3. The tool must handle pagination, failures, and memory management so it can run reliably over thousands of assets.
 
-Repository path: `blender_excercises/src/ex_4__batch_validator`
+Repository path: `blender_exercises/src/ex_4__batch_validator`
 
 ## Scope
 - Implement `batch_validator.py` runnable in a standard Python environment (with `bpy` accessible) that:

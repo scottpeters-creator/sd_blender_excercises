@@ -7,7 +7,7 @@
 
 Pipeline-driven thumbnail renderer that imports a 3D model and produces four 512x512 PNG images (textured, normal, depth, edge) plus a `metadata.json` with camera intrinsics and bounding box.
 
-Repository path: `blender_excercises/src/ex_2__thumbnail_renderer/`
+Repository path: `blender_exercises/src/ex_2__thumbnail_renderer/`
 
 ## What Has Been Implemented
 

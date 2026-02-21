@@ -266,7 +266,10 @@ def configure_video_output(
         quality: Output quality ('HIGH', 'MEDIUM', 'LOW').
     """
     scene = bpy.context.scene
-    scene.render.image_settings.file_format = format
+    img_settings = scene.render.image_settings
+    if hasattr(img_settings, "media_type"):
+        img_settings.media_type = "VIDEO"
+    img_settings.file_format = format
     scene.render.ffmpeg.format = "MPEG4"
     scene.render.ffmpeg.codec = codec
     scene.render.ffmpeg.constant_rate_factor = quality

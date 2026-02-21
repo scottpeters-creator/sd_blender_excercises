@@ -1,4 +1,4 @@
-"""Render steps: configure engine and produce individual modality images."""
+"""Render steps: configure engine, produce images, and render animations."""
 
 from __future__ import annotations
 
@@ -20,11 +20,12 @@ class ConfigureRendererStep(BlenderStep):
         self,
         resolution: tuple = _DEFAULT_RESOLUTION,
         samples: int = _DEFAULT_SAMPLES,
+        requires: set | list | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
             name="configure_renderer",
-            requires=["lighting_ready"],
+            requires=requires if requires is not None else ["lighting_ready"],
             provides=["renderer_ready"],
             **kwargs,
         )
@@ -279,4 +280,85 @@ class RenderEdgeStep(BlenderStep):
         return CompletedState(
             success=True, timestamp=CompletedState.now_iso(),
             duration_s=0.0, provides=["render_complete"],
+        )
+
+
+class ConfigureVideoOutputStep(BlenderStep):
+    """Configure FFmpeg video output (MP4/H264)."""
+
+    def __init__(
+        self,
+        fps: int = 30,
+        codec: str = "H264",
+        frame_start: int = 1,
+        frame_end: int = 150,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            name="configure_video_output",
+            requires=["renderer_ready"],
+            provides=["video_configured"],
+            **kwargs,
+        )
+        self._fps = fps
+        self._codec = codec
+        self._frame_start = frame_start
+        self._frame_end = frame_end
+
+    def execute(self, context: Dict[str, Any]) -> CompletedState:
+        import bpy
+        from lib.bpy.render import configure_video_output
+
+        output_dir = context.get("output_path", "/tmp")
+        ensure_directory(output_dir + "/")
+        mode = context.get("camera_mode", "spline")
+        video_path = os.path.join(output_dir, f"render_{mode}.mp4")
+
+        scene = bpy.context.scene
+        frame_count = context.get("frame_count")
+        scene.frame_start = self._frame_start
+        scene.frame_end = frame_count if frame_count else self._frame_end
+
+        configure_video_output(
+            output_path=video_path,
+            fps=self._fps,
+            codec=self._codec,
+        )
+
+        context["video_configured"] = True
+        context["video_path"] = video_path
+        return CompletedState(
+            success=True,
+            timestamp=CompletedState.now_iso(),
+            duration_s=0.0,
+            provides=["video_configured"],
+            outputs={"video_path": video_path},
+        )
+
+
+class RenderAnimationStep(BlenderStep):
+    """Render the full animation timeline to video."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(
+            name="render_animation",
+            requires=["video_configured"],
+            provides=["render_path"],
+            idempotent=False,
+            **kwargs,
+        )
+
+    def execute(self, context: Dict[str, Any]) -> CompletedState:
+        from lib.bpy.render import render_animation
+
+        render_animation()
+
+        video_path = context.get("video_path", "")
+        context["render_path"] = video_path
+        return CompletedState(
+            success=True,
+            timestamp=CompletedState.now_iso(),
+            duration_s=0.0,
+            provides=["render_path"],
+            outputs={"render_path": video_path},
         )

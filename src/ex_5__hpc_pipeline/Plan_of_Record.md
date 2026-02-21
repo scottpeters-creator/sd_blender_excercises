@@ -4,7 +4,7 @@
 
 Purpose: implement a Blender-based batch driver that processes human `.blend` files on an HPC cluster, filters out animated subjects, centers static subjects, and renders RGB + 32-bit EXR depth frames (360 frames per subject) using an NVIDIA H100 GPU. Provide a SLURM submit script to run the job on the cluster.
 
-Repository path: `blender_excercises/src/ex_5__hpc_pipeline`
+Repository path: `blender_exercises/src/ex_5__hpc_pipeline`
 
 ## Scope
 - Implement `process_batch.py` to run inside Blender (headless) and a SLURM `submit_jobs.sh` script to request GPU resources and run the job on an H100 node.

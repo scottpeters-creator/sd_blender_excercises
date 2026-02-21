@@ -490,6 +490,7 @@ class Pipeline(PipelineStep):
 
         current_items = [work_item]
         child_results: List[CompletedState] = []
+        step_counter = context.get("_step_index", 0)
 
         for step in self.steps:
             if isinstance(step, GeneratorStep):
@@ -513,6 +514,8 @@ class Pipeline(PipelineStep):
                 continue
 
             for item in current_items:
+                step_counter += 1
+                item.attributes["_step_index"] = step_counter
                 cs = self._execute_step(
                     step, item.attributes, force=force,
                     prefix=_prefix or self.name,

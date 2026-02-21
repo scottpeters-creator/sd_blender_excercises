@@ -1,4 +1,4 @@
-"""I/O steps: model import and directory scanning."""
+"""I/O steps: model import, scene opening, and directory scanning."""
 
 from __future__ import annotations
 
@@ -14,6 +14,45 @@ from lib.pipeline_steps.blender_step import BlenderStep
 from lib.work_item import WorkItem
 
 logger = logging.getLogger("pipeline.steps.io")
+
+
+class OpenBlendStep(BlenderStep):
+    """Open a .blend file directly, preserving the full scene.
+
+    Unlike ImportModelStep (which appends objects only), this replaces
+    the entire scene — preserving lighting, materials, cameras, and
+    world settings. Use for fully-dressed .blend scenes (e.g., Evermotion).
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(
+            name="open_blend",
+            provides=["scene_loaded"],
+            **kwargs,
+        )
+
+    def execute(self, context: Dict[str, Any]) -> CompletedState:
+        import os
+        from lib.bpy.io import open_blend
+
+        input_path = context.get("input_path")
+        if not input_path:
+            return CompletedState(
+                success=False,
+                timestamp=CompletedState.now_iso(),
+                duration_s=0.0,
+                error={"message": "no input_path in context"},
+            )
+
+        open_blend(input_path)
+        context["scene_loaded"] = True
+        return CompletedState(
+            success=True,
+            timestamp=CompletedState.now_iso(),
+            duration_s=0.0,
+            provides=["scene_loaded"],
+            outputs={"scene": os.path.basename(input_path)},
+        )
 
 
 class ImportModelStep(BlenderStep):

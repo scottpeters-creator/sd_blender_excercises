@@ -1,13 +1,13 @@
 # Project Context — Blender Exercises Pipeline
 
-This is the canonical context file for the blender_excercises project. Downstream agents implementing exercises 1–5 should read this first.
+This is the canonical context file for the blender_exercises project. Downstream agents implementing exercises 1–5 should read this first.
 
 ---
 
 ## 1. Project Structure
 
 ```
-blender_excercises/
+blender_exercises/
 ├── pyproject.toml                      ← pip install -e . for package imports
 ├── context.md                          ← you are here
 ├── source/
@@ -33,7 +33,8 @@ blender_excercises/
     │   │   ├── camera.py               ← SetupCameraStep
     │   │   ├── lighting.py             ← SetupEnvironmentLightStep
     │   │   ├── render.py               ← ConfigureRendererStep, RenderTexturedStep,
-    │   │   │                              RenderNormalStep, RenderDepthStep, RenderEdgeStep
+    │   │   │                              RenderNormalStep, RenderDepthStep, RenderEdgeStep,
+    │   │   │                              ConfigureVideoOutputStep, RenderAnimationStep
     │   │   └── reporting.py            ← WriteJSONStep, WriteMetadataStep
     │   └── bpy/                        ← shared Blender utility functions
     │       ├── __init__.py
@@ -47,9 +48,13 @@ blender_excercises/
     │   ├── __init__.py
     │   ├── mini_inspector.py           ← composition + CLI (~200 lines)
     │   └── Plan_of_Record.md
-    └── ex_2__thumbnail_renderer/       ← IN PROGRESS (functional)
+    ├── ex_2__thumbnail_renderer/       ← COMPLETE (functional)
+    │   ├── __init__.py
+    │   ├── render_task.py              ← composition + CLI (~170 lines)
+    │   └── Plan_of_Record.md
+    └── ex_3__proc_camera/              ← COMPLETE
         ├── __init__.py
-        ├── render_task.py              ← composition + CLI (~170 lines)
+        ├── proc_camera.py              ← composition + CLI (~240 lines)
         └── Plan_of_Record.md
 ```
 
@@ -206,9 +211,10 @@ Steps that interact with `bpy` extend `BlenderStep` (auto scene snapshots). Step
 | `io.py` | `ImportModelStep` | BlenderStep | All exercises |
 | `io.py` | `GrepModelsStep` | GeneratorStep | All exercises |
 | `analysis.py` | `CollectMeshesStep`, `ComputeCountsStep` | BlenderStep | Ex 1, 2, 4 |
-| `camera.py` | `SetupCameraStep` | BlenderStep | Ex 2, 3, 5 |
-| `lighting.py` | `SetupEnvironmentLightStep` | BlenderStep | Ex 2, 3, 5 |
+| `camera.py` | `SetupCameraStep` | BlenderStep | Ex 2, 5 |
+| `lighting.py` | `SetupEnvironmentLightStep` | BlenderStep | Ex 2, 5 |
 | `render.py` | `ConfigureRendererStep`, `RenderTexturedStep`, `RenderNormalStep`, `RenderDepthStep`, `RenderEdgeStep` | BlenderStep | Ex 2, 5 |
+| `render.py` | `ConfigureVideoOutputStep`, `RenderAnimationStep` | BlenderStep | Ex 3, 5 |
 | `reporting.py` | `WriteJSONStep` | PipelineStep | Ex 1, 2, 4 |
 | `reporting.py` | `WriteMetadataStep` | BlenderStep | Ex 2 |
 
@@ -219,10 +225,11 @@ from lib.pipeline_steps.io import ImportModelStep, GrepModelsStep
 from lib.pipeline_steps.camera import SetupCameraStep
 from lib.pipeline_steps.lighting import SetupEnvironmentLightStep
 from lib.pipeline_steps.render import ConfigureRendererStep, RenderTexturedStep
+from lib.pipeline_steps.render import ConfigureVideoOutputStep, RenderAnimationStep
 from lib.pipeline_steps.reporting import WriteJSONStep, WriteMetadataStep
 ```
 
-Exercise-specific steps (e.g., `AssembleReportStep` in Ex 1 with a custom report schema) stay in the exercise script.
+Exercise-specific steps (e.g., `AssembleReportStep` in Ex 1 with a custom report schema, `OpenBlendStep` in Ex 3 for scene-replacing loads) stay in the exercise script.
 
 ### 2.5 Schedulers (`src/lib/scheduler.py`)
 
@@ -764,8 +771,8 @@ Exercise-specific steps should add their own keys following the same pattern.
 The project uses a `pyproject.toml` with `src/` layout. After one-time setup (`pip install -e .` from the project root), all packages are importable from anywhere:
 
 ```bash
-conda activate blender_excercises
-cd blender_excercises    # project root (where pyproject.toml lives)
+conda activate blender_exercises
+cd blender_exercises    # project root (where pyproject.toml lives)
 pip install -e .         # one-time — registers src/ as package root
 ```
 
@@ -806,7 +813,7 @@ Each exercise reuses and extends the pipeline infrastructure:
 |---|---|---|---|
 | **Ex 1** — Mini Inspector | `mini_inspector.py` | **Complete** | `GrepModelsStep` fan-out → `inspect_model` (depth-first per item): `scene_prep → analysis → reporting → cleanup`. Single-file and batch modes. See `ex_1__mini_inspector/Plan_of_Record.md`. |
 | **Ex 2** — Thumbnail Renderer | `render_task.py` | **Functional** | `GrepModelsStep` fan-out → `render_model` (depth-first): `scene_prep → camera_setup → lighting → render (textured/normal/depth/edge) → metadata → cleanup`. All steps from `lib/pipeline_steps/`. See `ex_2__thumbnail_renderer/Plan_of_Record.md`. |
-| **Ex 3** — Procedural Camera | `proc_camera.py` | Not started | Reuse `PrepareSceneStep` + `CleanupSceneStep`. Add camera animation steps + `render_video` pipeline. |
+| **Ex 3** — Procedural Camera | `proc_camera.py` | **Complete** | `OpenBlendStep` (preserves full scene) → `GenerateCameraPathStep` → `SetupAnimationStep` (mode A spline / mode B point-to-point) → `ConfigureRendererStep` + `ConfigureVideoOutputStep` + `RenderAnimationStep` → `WriteCameraLogStep` → `CleanupSceneStep`. Exercise-specific steps in script; video steps shared in `lib/pipeline_steps/render.py`. See `ex_3__proc_camera/Plan_of_Record.md`. |
 | **Ex 4** — Batch Validator | `batch_validator.py` | Not started | Reuse `GrepModelsStep` for fan-out. Embed Ex 1's `build_e2e_pipeline()` as the per-model step. `PoolScheduler` or `SubprocessScheduler` for memory isolation on large batches. |
 | **Ex 5** — HPC Pipeline | `process_batch.py` | Not started | `filter_animated → normalize → configure_renderer → orbit_animation → render_frames` composed pipeline. `SLURMScheduler` for HPC submission. |
 
@@ -816,12 +823,12 @@ Each exercise reuses and extends the pipeline infrastructure:
 
 ### Environment setup (one-time)
 ```bash
-conda activate blender_excercises
-cd blender_excercises          # project root (where pyproject.toml lives)
+conda activate blender_exercises
+cd blender_exercises          # project root (where pyproject.toml lives)
 pip install -e .               # registers src/ packages for clean imports
 ```
 
-The `bpy` module is installed in the `blender_excercises` conda env. Blender GUI is at `/Applications/Blender.app/Contents/MacOS/blender`.
+The `bpy` module is installed in the `blender_exercises` conda env. Blender GUI is at `/Applications/Blender.app/Contents/MacOS/blender`.
 
 ### Unit tests (Blender-free, 96 tests)
 ```bash
@@ -862,6 +869,25 @@ python -m ex_2__thumbnail_renderer.render_task \
 # Custom render samples (lower = faster, higher = less noise)
 python -m ex_2__thumbnail_renderer.render_task \
   /path/to/model.glb /path/to/renders/ --samples 64
+```
+
+### Running Ex 3 — Procedural Camera
+```bash
+# Mode A: random spline flythrough
+python -m ex_3__proc_camera.proc_camera \
+  /path/to/scene.blend /path/to/output/ --mode spline
+
+# Mode B: point-to-point with look-at
+python -m ex_3__proc_camera.proc_camera \
+  /path/to/scene.blend /path/to/output/ --mode point
+
+# Reproducible seed + custom frame count
+python -m ex_3__proc_camera.proc_camera \
+  /path/to/scene.blend /path/to/output/ --mode spline --seed 42 --frames 10
+
+# Dry-run
+python -m ex_3__proc_camera.proc_camera \
+  /path/to/scene.blend /path/to/output/ --mode spline --dry-run
 ```
 
 ### Input data locations
@@ -918,36 +944,39 @@ Renders 4 modalities (textured, normal, depth, edge) at 512x512 plus metadata.js
 
 All steps imported from `lib/pipeline_steps/` — exercise script is pure composition + CLI (~170 lines).
 
-### Ex 3 — Procedural Camera — NOT STARTED
+### Ex 3 — Procedural Camera — COMPLETE
 
-Create `src/ex_3__proc_camera/proc_camera.py`. See `src/ex_3__proc_camera/Plan_of_Record.md` for detailed guidance.
+See `src/ex_3__proc_camera/Plan_of_Record.md` for full implementation details.
 
-**Pipeline structure (recommended):**
+Generates procedural camera flythrough animations in two modes (spline / point-to-point), renders to 640x480 MP4 at 30 fps via Cycles.
+
+**Key design decision:** Uses `OpenBlendStep` (calls `open_blend()`) instead of `PrepareSceneStep` + `ImportModelStep`. Evermotion `.blend` scenes are fully-dressed environments — `open_blend()` preserves lighting, materials, and world settings that `import_model()` would strip.
+
+**Pipeline structure:**
 ```
 proc_camera_e2e
-├── scene_prep (reuse PrepareSceneStep + ImportModelStep)
+├── scene_prep
+│   └── OpenBlendStep             → io.open_blend() (preserves full scene)
 ├── camera_animation
-│   ├── GenerateCameraPathStep   → NEW: random control points within scene AABB
-│   └── SetupAnimationStep       → NEW: Mode A (bezier + follow path) or Mode B (linear + look-at)
+│   ├── GenerateCameraPathStep    → random points in AABB, create camera
+│   └── SetupAnimationStep        → mode A (bezier + follow path) or mode B (linear + look-at)
 ├── render_video
-│   ├── ConfigureRendererStep    → reuse, resolution=(640, 480)
-│   ├── ConfigureVideoOutputStep → NEW: render.configure_video_output() for MP4
-│   └── RenderAnimationStep      → NEW: render.render_animation()
+│   ├── ConfigureRendererStep     → reused, requires={"animation_configured"}
+│   ├── ConfigureVideoOutputStep  → shared (lib/pipeline_steps/render.py)
+│   └── RenderAnimationStep       → shared (lib/pipeline_steps/render.py)
 ├── write_log
-│   └── WriteCameraLogStep       → NEW: mode + control points to JSON
-└── cleanup (reuse CleanupSceneStep)
+│   └── WriteCameraLogStep        → JSON with mode, seed, control points
+└── cleanup
+    └── CleanupSceneStep          → reused
 ```
 
-**Key implementation notes:**
-- Reuse `PrepareSceneStep`, `ImportModelStep`, `CleanupSceneStep`, `ConfigureRendererStep`, `SetupEnvironmentLightStep` from `lib/pipeline_steps/`
-- New steps should extend `BlenderStep` and implement `execute()` (not `PipelineStep.run()`)
-- Use `get_scene_bounds()` from `lib/bpy/scene.py` to generate random points within the scene AABB
-- Mode A uses: `animation.create_bezier_path()` + `animation.constrain_to_path()`
-- Mode B uses: `animation.create_linear_keyframes()` + `camera.add_track_to_location()`
-- Set `scene.frame_start = 1`, `scene.frame_end = 150` before `render_animation()`
-- Output: 640x480 MP4, 150 frames, 30 fps
-- Consider adding new reusable steps to `lib/pipeline_steps/` if Ex 5 can use them (orbit animation is similar)
-- Defer all `from lib.bpy.*` imports inside `execute()` methods
+**Exercise-specific steps (in `proc_camera.py`):** `OpenBlendStep`, `GenerateCameraPathStep`, `SetupAnimationStep`, `WriteCameraLogStep`.
+
+**Shared steps added to `lib/pipeline_steps/render.py`:** `ConfigureVideoOutputStep`, `RenderAnimationStep` — reusable by Ex 5.
+
+**`ConfigureRendererStep` requires override:** The shared step defaults to `requires=["lighting_ready"]` for Ex 2's chain. Ex 3 passes `requires={"animation_configured"}` at construction time — no class modification needed.
+
+**Blender 5.0 compat fix:** `ImageFormatSettings.media_type` must be set to `"VIDEO"` before `file_format = "FFMPEG"`. Fixed in `lib/bpy/render.py:configure_video_output()` with `hasattr` guard.
 
 ### Ex 4 — Batch Validator — NOT STARTED
 
@@ -988,8 +1017,12 @@ These are hard-won lessons from Ex 1 and Ex 2 that apply to all subsequent exerc
 
 7. **Package imports, not sys.path.** After `pip install -e .`, use `from lib.pipeline import ...` directly. No `sys.path` hacks.
 
-8. **Blender 5.0 API changes.** The `bpy` module in Blender 5.0 has breaking changes: `scene.node_tree` became `scene.compositing_node_group`, `CompositorNodeComposite` was removed, `CompositorNodeOutputFile.base_path` became `directory`, and `Material.use_nodes` is deprecated. See `lib/bpy/render.py` for compatibility helpers (`_ensure_compositor_tree`, `_get_compositor_tree`).
+8. **Blender 5.0 API changes.** The `bpy` module in Blender 5.0 has breaking changes: `scene.node_tree` became `scene.compositing_node_group`, `CompositorNodeComposite` was removed, `CompositorNodeOutputFile.base_path` became `directory`, `Material.use_nodes` is deprecated, and `ImageFormatSettings.media_type` must be set to `"VIDEO"` before setting `file_format = "FFMPEG"` for video output. See `lib/bpy/render.py` for compatibility helpers (`_ensure_compositor_tree`, `_get_compositor_tree`, `media_type` guard in `configure_video_output`).
 
 9. **Scene snapshots to `.pipeline/` directory.** `BlenderStep` automatically saves `.blend` files to `{output_path}/.pipeline/after_{step_name}.blend`. Disable for production with `context["save_scenes"] = False`. Customize location with `context["artifacts_dir"] = "/custom/path/"`.
 
-10. **Reuse steps from `lib/pipeline_steps/`, don't redefine them.** 13 pre-built steps are available. Exercise scripts should only define exercise-specific steps (e.g., custom report formats). Import shared steps from the library.
+10. **Reuse steps from `lib/pipeline_steps/`, don't redefine them.** 15 pre-built steps are available. Exercise scripts should only define exercise-specific steps (e.g., custom report formats). Import shared steps from the library.
+
+11. **`open_blend()` vs `import_model()` for .blend files.** `import_model()` appends objects only — it strips world settings, lighting, and cameras. `open_blend()` replaces the entire scene, preserving everything. For fully-dressed scenes (Evermotion interiors), use `open_blend()`. For importing objects into a clean scene, use `import_model()`.
+
+12. **`ConfigureRendererStep` requires is overridable.** The shared step defaults to `requires=["lighting_ready"]` (Ex 2's chain). For exercises where lighting is baked into the scene, override at construction: `ConfigureRendererStep(requires={"animation_configured"})`. No class modification needed.

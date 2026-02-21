@@ -6,12 +6,12 @@
 **Completed:** 2026-02-18
 **Depends on:** 001_pipeline_dev (complete), exercises 1–3 implemented
 **Target files:**
-- `blender_excercises/src/lib/pipeline.py` (primary — extend, not rewrite)
-- `blender_excercises/src/lib/work_item.py` (new)
-- `blender_excercises/src/lib/scheduler.py` (new)
-- `blender_excercises/src/lib/test_pipeline.py` (extend)
-- `blender_excercises/src/lib/__init__.py` (update exports)
-- `blender_excercises/context.md` (update after each phase)
+- `blender_exercises/src/lib/pipeline.py` (primary — extend, not rewrite)
+- `blender_exercises/src/lib/work_item.py` (new)
+- `blender_exercises/src/lib/scheduler.py` (new)
+- `blender_exercises/src/lib/test_pipeline.py` (extend)
+- `blender_exercises/src/lib/__init__.py` (update exports)
+- `blender_exercises/context.md` (update after each phase)
 
 ---
 

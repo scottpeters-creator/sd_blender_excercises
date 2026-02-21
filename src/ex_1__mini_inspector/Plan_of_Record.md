@@ -7,7 +7,7 @@
 
 Pipeline-driven mini inspector that analyzes 3D model files (.glb, .gltf, .obj, .fbx, .stl, .blend) and produces JSON metadata reports containing geometry counts, topology breakdown, world-space bounding box, and material names.
 
-Repository path: `blender_excercises/src/ex_1__mini_inspector/`
+Repository path: `blender_exercises/src/ex_1__mini_inspector/`
 
 ## Deliverables
 

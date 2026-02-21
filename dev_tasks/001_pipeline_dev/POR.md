@@ -5,8 +5,8 @@
 **Status:** Complete
 **Completed:** 2026-02-18
 **Target files:**
-- `blender_excercises/src/lib/pipeline.py` (primary)
-- `blender_excercises/src/ex_1__mini_inspector/mini_inspector.py` (consumer update)
+- `blender_exercises/src/lib/pipeline.py` (primary)
+- `blender_exercises/src/ex_1__mini_inspector/mini_inspector.py` (consumer update)
 
 ---
 

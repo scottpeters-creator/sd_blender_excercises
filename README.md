@@ -10,7 +10,7 @@ Five exercises that build on a shared pipeline framework:
 |---|---|---|
 | **Ex 1** -- Mini Inspector | Import a .glb model, extract geometry counts, topology, bounding box, materials. Output a JSON report. | Complete |
 | **Ex 2** -- Thumbnail Renderer | Render 4 modalities (textured, normal, depth, edge) at 512x512 per model, plus metadata.json. | Functional |
-| **Ex 3** -- Procedural Camera | Generate camera flythrough animations (spline and point-to-point modes), render to MP4. | Not started |
+| **Ex 3** -- Procedural Camera | Generate camera flythrough animations (spline and point-to-point modes), render to MP4. | In progress (v6) |
 | **Ex 4** -- Batch Validator | Scan S3 for .glb files, process thousands with memory management, upload JSON reports back to S3. | Not started |
 | **Ex 5** -- HPC Pipeline | Filter animated subjects, normalize to origin, render 360-frame orbits (RGB + Depth) on SLURM with H100 GPUs. | Not started |
 
@@ -43,14 +43,14 @@ Real 3D data engineering pipelines process thousands of assets through multi-ste
 
 ```bash
 # Create and activate the conda environment
-conda create -n blender_excercises python=3.11
-conda activate blender_excercises
+conda create -n blender_exercises python=3.11
+conda activate blender_exercises
 
 # Install bpy (match your Python version)
 pip install bpy
 
 # Install the project in editable mode
-cd blender_excercises
+cd blender_exercises
 pip install -e .
 ```
 
@@ -80,6 +80,19 @@ python -m ex_2__thumbnail_renderer.render_task model.glb /path/to/output/
 python -m ex_2__thumbnail_renderer.render_task /path/to/models/ /path/to/renders/ --type glb --limit 10 --samples 64
 ```
 
+### Run Exercise 3 -- Procedural Camera
+
+```bash
+# Spline flythrough with seeded jitter (deterministic)
+python -m ex_3__proc_camera.proc_camera scene.blend /path/to/output/ --mode spline --seed 42 --frames 150
+
+# Point-to-point with look-at
+python -m ex_3__proc_camera.proc_camera scene.blend /path/to/output/ --mode point
+
+# Quick test (10 frames, low samples)
+python -m ex_3__proc_camera.proc_camera scene.blend /path/to/output/ --mode spline --seed 42 --frames 10 --samples 16
+```
+
 ### Run Tests
 
 ```bash
@@ -95,13 +108,15 @@ PipelineStep (ABC)
     ├── StepGroup          parallel/sequential groups
     ├── GeneratorStep      fan-out: 1 WorkItem -> N WorkItems
     ├── CollectorStep      fan-in: N WorkItems -> 1 WorkItem
-    └── BlenderStep        bpy-specific base (auto scene snapshots)
-          ├── PrepareSceneStep
-          ├── ImportModelStep
-          ├── SetupCameraStep
-          ├── ConfigureRendererStep
+    └── BlenderStep        bpy-specific base (artifacts, screenshots, snapshots)
+          ├── NormalizeSceneStep       (unit scale, transforms, modifiers, normals)
+          ├── PrepareSceneStep / MergeMeshesStep / CleanupSceneStep
+          ├── ImportModelStep / OpenBlendStep
+          ├── IsoMeshFromMeshStep / ScatterPointsInMeshStep / PerturbPointsStep
+          ├── CullPointsByMeshStep / OrderPointsStep
+          ├── SetupCameraStep / ConfigureRendererStep
           ├── RenderTexturedStep / NormalStep / DepthStep / EdgeStep
-          └── ...13 reusable steps total
+          └── ...20+ reusable steps total
 ```
 
 The orchestrator runs each step through a composable **middleware chain** (idempotent skip, requirements check, logging, timing, validation, state write). Custom middleware (retry, profiling) can be injected without modifying step code.
@@ -131,29 +146,51 @@ pipeline = Pipeline(
 )
 ```
 
-### Scene Snapshots
+### Pipeline Artifacts, Screenshots, and Snapshots
 
-All `BlenderStep` subclasses automatically save `.blend` snapshots after each successful step to a `.pipeline/` directory alongside deliverables. This enables debugging (open any snapshot in Blender's GUI) and pipeline resumability.
+Every `BlenderStep` subclass runs three post-execute hooks after each successful step:
+
+1. **Artifact generation** — creates a numbered, named object in the Blender outliner so each step's output is independently visible and inspectable (not buried in a modifier stack).
+
+2. **Screenshot capture** — frames the artifact with a debug camera (auto clip planes from bounding sphere), renders a 960x540 PNG via Eevee. Works headless. Provides a visual record without opening `.blend` files.
+
+3. **Scene snapshot** — saves the full `.blend` scene for interactive debugging.
+
+All outputs use zero-padded step numbering for correct sort order:
 
 ```
-output/model_stem/
-├── render_textured.png     <-- deliverables
-├── metadata.json
-└── .pipeline/              <-- auto-saved artifacts
-    ├── after_prepare_scene.blend
-    ├── after_import_model.blend
-    └── after_setup_camera.blend
+output/
+├── render_spline.mp4       <-- deliverables
+├── camera_log.json
+└── .pipeline/              <-- auto-saved per-step artifacts
+    ├── 001_open_blend.blend
+    ├── 002_normalize_scene.blend
+    ├── 003_merge_meshes.blend
+    ├── 003_merge_meshes.png     ← screenshot (step has geometry)
+    ├── 004_iso_mesh_from_mesh.blend
+    ├── 004_iso_mesh_from_mesh.png
+    ├── ...
 ```
 
-Snapshots are on by default and controllable at three levels:
-- Per-run: `context["save_scenes"] = False`
-- Per-step: `RenderTexturedStep(save_scene=False)`
-- Default: on
+Steps that produce geometry override `get_artifact(context)` to return their output object. Steps without inspectable geometry (e.g., `ConfigureRendererStep`) return `None` — they get a `.blend` snapshot but no artifact or screenshot.
+
+All three hooks are on by default and controllable at per-run and per-step levels:
+
+```python
+# Disable screenshots for a production batch run
+context["save_screenshots"] = False
+
+# Disable all artifacts for a specific step
+ConfigureRendererStep(save_artifact=False, save_screenshot=False)
+
+# Change screenshot engine (default: BLENDER_EEVEE)
+context["screenshot_engine"] = "CYCLES"
+```
 
 ## Project Structure
 
 ```
-blender_excercises/
+blender_exercises/
 ├── pyproject.toml              package definition
 ├── context.md                  detailed framework documentation
 ├── README.md                   this file
@@ -166,11 +203,11 @@ blender_excercises/
     │   ├── scheduler.py        Local/Pool/Subprocess/SLURM schedulers
     │   ├── naming.py           OutputNamer, ensure_directory
     │   ├── test_pipeline.py    96 unit tests
-    │   ├── pipeline_steps/     13 reusable step classes
-    │   └── bpy/                Blender utility functions
+    │   ├── pipeline_steps/     20+ reusable step classes
+    │   └── bpy/                Blender utility functions (GN builders, camera, render, etc.)
     ├── ex_1__mini_inspector/   Exercise 1 (complete)
     ├── ex_2__thumbnail_renderer/  Exercise 2 (functional)
-    ├── ex_3__proc_camera/      Exercise 3 (not started)
+    ├── ex_3__proc_camera/      Exercise 3 (v6 — in progress)
     ├── ex_4__batch_validator/  Exercise 4 (not started)
     └── ex_5__hpc_pipeline/     Exercise 5 (not started)
 ```
@@ -191,3 +228,9 @@ blender_excercises/
 3. **Deferred bpy imports.** All `from lib.bpy.*` imports are inside step `execute()` methods, not at module top level. This allows pipeline composition and testing without bpy.
 
 4. **Blender 5.0 compatibility.** The framework handles Blender 5.0 API changes (`scene.compositing_node_group` instead of `scene.node_tree`, `Material.use_nodes` deprecation, missing `CompositorNodeComposite`, `CompositorNodeOutputFile.directory` instead of `base_path`).
+
+5. **Scene normalization.** `NormalizeSceneStep` runs early in the pipeline to fix common Blender data model issues: sets `scale_length=1.0` so code values match UI display, makes multi-user meshes single-user, applies unapplied transforms and modifiers, fixes negative-scale normals. This ensures all downstream steps operate on clean, predictable geometry.
+
+6. **GN-native spatial operations.** All geometry operations (iso mesh, volume scatter, SDF cull, seeded jitter) run as Geometry Nodes evaluations, not Python loops. GN trees are auto-laid-out via the `@auto_layout` decorator for immediate readability when inspecting `.blend` snapshots.
+
+7. **Uniform introspection.** Every pipeline step produces both a live GN modifier (for interactive parameter tweaking) and a separate numbered artifact object in the outliner (for visual inspection and headless screenshots). This mirrors Houdini's "inspect any node" workflow within Blender's more restrictive architecture.
